@@ -49,9 +49,9 @@ option(USE_MIGRAPHX "Build the MIGraphX Execution Provider" OFF)
 option(USE_HIP "Build the HIP (morphizen) backend shim" OFF)
 
 if(USE_AMDGPU)
-    set(CACHE{USE_DML} TYPE BOOL FORCE VALUE ON)
-    set(CACHE{USE_MIGRAPHX} TYPE BOOL FORCE VALUE ON)
-    set(CACHE{USE_HIP} TYPE BOOL FORCE VALUE OFF)
+    set(CACHE{USE_DML} TYPE BOOL FORCE VALUE OFF)
+    set(CACHE{USE_MIGRAPHX} TYPE BOOL FORCE VALUE OFF)
+    set(CACHE{USE_HIP} TYPE BOOL FORCE VALUE ON)
 endif()
 
 add_subdirectory(src)

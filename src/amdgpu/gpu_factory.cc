@@ -119,32 +119,41 @@ ProviderFactory::ProviderFactory(const ApiPtrs& api_ptrs, const OrtApiBase* ort_
         API_CALL_S(ProviderFactory, this_, GetCustomOpDomains, domains, num_domains);
     };
 
-    THROW_IF_ERROR(LoadDynamicLibrary(directmlBackend, &dml_backend_));
-    THROW_IF_ERROR(GetSymbolFromLibrary(dml_backend_,
-        "ReleaseEpFactory", reinterpret_cast<void**>(&dml_release_ep_factory_)));
+#ifdef USE_DML
+    {
+        THROW_IF_ERROR(LoadDynamicLibrary(directmlBackend, &dml_backend_));
+        THROW_IF_ERROR(GetSymbolFromLibrary(dml_backend_,
+            "ReleaseEpFactory", reinterpret_cast<void**>(&dml_release_ep_factory_)));
 
-    CreateEpFactories_t dml_create_ep_factories{};
-    THROW_IF_ERROR(GetSymbolFromLibrary(dml_backend_,
-        "CreateEpFactories", reinterpret_cast<void**>(&dml_create_ep_factories)));
+        CreateEpFactories_t dml_create_ep_factories{};
+        THROW_IF_ERROR(GetSymbolFromLibrary(dml_backend_,
+            "CreateEpFactories", reinterpret_cast<void**>(&dml_create_ep_factories)));
 
-    size_t factories_created{};
-    // Pass ep_name_ (e.g. "amdgpu") so the directml backend registers its kernels,
-    // allocators, and node assignments under the same name ORT sees for this EP.
-    // Using kDirectMLBackend ("directml") would cause a provider name mismatch:
-    // ORT would look up kernels under "amdgpu" but find them stamped as "directml".
-    THROW_IF_ERROR(dml_create_ep_factories(ep_name_.c_str(), ort_api_base, default_logger,
-        &dml_ep_factory_, 1, &factories_created));
+        size_t factories_created{};
+        // Pass ep_name_ (e.g. "amdgpu") so the directml backend registers its kernels,
+        // allocators, and node assignments under the same name ORT sees for this EP.
+        // Using kDirectMLBackend ("directml") would cause a provider name mismatch:
+        // ORT would look up kernels under "amdgpu" but find them stamped as "directml".
+        THROW_IF_ERROR(dml_create_ep_factories(ep_name_.c_str(), ort_api_base, default_logger,
+            &dml_ep_factory_, 1, &factories_created));
+    }
+#endif
 
-    THROW_IF_ERROR(LoadDynamicLibrary(migraphxBackend, &mgx_backend_));
-    THROW_IF_ERROR(GetSymbolFromLibrary(mgx_backend_,
-        "ReleaseEpFactory", reinterpret_cast<void**>(&mgx_release_ep_factory_)));
+#ifdef USE_MIGRAPHX
+    {
+        THROW_IF_ERROR(LoadDynamicLibrary(migraphxBackend, &mgx_backend_));
+        THROW_IF_ERROR(GetSymbolFromLibrary(mgx_backend_,
+            "ReleaseEpFactory", reinterpret_cast<void**>(&mgx_release_ep_factory_)));
 
-    CreateEpFactories_t mgx_create_ep_factories{};
-    THROW_IF_ERROR(GetSymbolFromLibrary(mgx_backend_,
-        "CreateEpFactories", reinterpret_cast<void**>(&mgx_create_ep_factories)));
+        CreateEpFactories_t mgx_create_ep_factories{};
+        THROW_IF_ERROR(GetSymbolFromLibrary(mgx_backend_,
+            "CreateEpFactories", reinterpret_cast<void**>(&mgx_create_ep_factories)));
 
-    THROW_IF_ERROR(mgx_create_ep_factories(kMIGraphXBackend, ort_api_base, default_logger,
-        &mgx_ep_factory_, 1, &factories_created));
+        size_t factories_created{};
+        THROW_IF_ERROR(mgx_create_ep_factories(kMIGraphXBackend, ort_api_base, default_logger,
+            &mgx_ep_factory_, 1, &factories_created));
+    }
+#endif
 
     // hip (morphizen) backend: optional, only present when built with USE_HIP.
 #ifdef USE_HIP
@@ -156,6 +165,8 @@ ProviderFactory::ProviderFactory(const ApiPtrs& api_ptrs, const OrtApiBase* ort_
     THROW_IF_ERROR(GetSymbolFromLibrary(hip_backend_,
         "CreateEpFactories", reinterpret_cast<void**>(&hip_create_ep_factories)));
 
+    size_t factories_created{};
+    // Pass ep_name_ so the hip backend's EP reports the same name ORT sees.
     THROW_IF_ERROR(hip_create_ep_factories(ep_name_.c_str(), ort_api_base, default_logger,
         &hip_ep_factory_, 1, &factories_created));
 #endif
@@ -179,12 +190,16 @@ ProviderFactory::~ProviderFactory() {
     if (pinned_memory_info_) {
         ort_api.ReleaseMemoryInfo(pinned_memory_info_);
     }
+#ifdef USE_DML
     if (!UnloadDynamicLibrary(dml_backend_).IsOK()) {
         /* TODO: log failure while unloading DirectML EP library */
     }
+#endif
+#ifdef USE_MIGRAPHX
     if (!UnloadDynamicLibrary(mgx_backend_).IsOK()) {
         /* TODO: log failure while unloading MIGraphX EP library */
     }
+#endif
     if (!UnloadDynamicLibrary(hip_backend_).IsOK()) {
         /* TODO: log failure while unloading hip EP library */
     }

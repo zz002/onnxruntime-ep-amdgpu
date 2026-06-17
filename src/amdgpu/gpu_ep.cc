@@ -5,7 +5,9 @@
 #include "gpu_ep.h"
 
 #include "gpu_options.h"
+#ifdef USE_MIGRAPHX
 #include "mgx_options.h"
+#endif
 
 #define EP_CALL_T(backend, fn, defval, ...)                            \
     do {                                                               \
@@ -123,6 +125,7 @@ ExecutionProvider::ExecutionProvider(ProviderFactory& factory, std::string_view 
         THROW_IF_ERROR(factory.CreateHipBackend(local_session_options, logger, backend_ep_));
     };
 
+#ifdef USE_MIGRAPHX
     const auto create_migraphx_backend = [&] {
         const auto get_name = [](const std::string_view sv) {
             return std::string{"ep."}.append(kMIGraphXBackend).append(".").append(sv);
@@ -171,17 +174,34 @@ ExecutionProvider::ExecutionProvider(ProviderFactory& factory, std::string_view 
         }
         THROW_IF_ERROR(factory.CreateMIGraphXBackend(local_session_options, logger, backend_ep_));
     };
+#endif
 
-    if (info.profile == Profile::Eager) {
+    bool backend_created = false;
+    if (info.profile == Profile::Eager || info.profile == Profile::DirectML) {
         create_directml_backend();
-    } else if (info.profile == Profile::DirectML) {
-        create_directml_backend();
-    } else if (info.profile == Profile::MIGraphX) {
+        backend_created = true;
+    }
+#ifdef USE_MIGRAPHX
+    if (!backend_created && info.profile == Profile::MIGraphX) {
         create_migraphx_backend();
-    } else if (info.profile == Profile::Hip) {
+        backend_created = true;
+    }
+#endif
+    if (!backend_created && info.profile == Profile::Hip) {
         create_hip_backend();
-    } else {
+        backend_created = true;
+    }
+#ifdef USE_MIGRAPHX
+    if (!backend_created) {
         create_migraphx_backend();
+        backend_created = true;
+    }
+#endif
+    if (!backend_created) {
+        ort_api.ReleaseSessionOptions(local_session_options);
+        THROW_IF_ERROR(MAKE_STATUS(ORT_EP_FAIL,
+            "amdgpu EP: no backend available for the requested profile "
+            "(check build flags USE_DML/USE_MIGRAPHX)"));
     }
     ort_api.ReleaseSessionOptions(local_session_options);
 }
