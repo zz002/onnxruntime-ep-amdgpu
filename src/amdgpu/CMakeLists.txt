@@ -21,11 +21,22 @@ add_library(amdgpu-ep MODULE
 
 target_link_libraries(amdgpu-ep PRIVATE plugin-ep-utils flatbuffers)
 
-target_include_directories(amdgpu-ep PRIVATE
-        $<TARGET_PROPERTY:migraphx-ep,INTERFACE_INCLUDE_DIRECTORIES>)
+# Expose USE_HIP so the source can gate the optional hip backend load.
+target_compile_definitions(amdgpu-ep PRIVATE $<$<BOOL:${USE_HIP}>:USE_HIP>)
 
-target_include_directories(amdgpu-ep PRIVATE
-        $<TARGET_PROPERTY:directml-ep,INTERFACE_INCLUDE_DIRECTORIES>)
+if(USE_MIGRAPHX)
+    target_include_directories(amdgpu-ep PRIVATE
+            $<TARGET_PROPERTY:migraphx-ep,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
+
+if(USE_DML)
+    target_include_directories(amdgpu-ep PRIVATE
+            $<TARGET_PROPERTY:directml-ep,INTERFACE_INCLUDE_DIRECTORIES>)
+endif()
+
+target_compile_definitions(amdgpu-ep PRIVATE
+        $<$<BOOL:${USE_DML}>:USE_DML>
+        $<$<BOOL:${USE_MIGRAPHX}>:USE_MIGRAPHX>)
 
 if(WIN32)
     set_property(TARGET amdgpu-ep APPEND_STRING
